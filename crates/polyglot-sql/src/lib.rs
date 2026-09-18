@@ -110,11 +110,11 @@ pub use optimizer::{
 pub use parser::Parser;
 #[cfg(all(feature = "semantic", feature = "generate"))]
 pub use query_analysis::{
-    analyze_query, AnalyzeQueryOptions, ColumnReferenceFact, ColumnUseContext, ColumnUseFact,
-    ColumnUseReferenceFact, CteFact, ProjectionFact, ProjectionNullability, QueryAnalysis,
-    QueryShape, QuerySourceSpan, ReferenceConfidence, RelationFact, SetOperationBranchFact,
-    SetOperationBranchRole, SetOperationFact, StarProjectionFact, TransformFunctionFact,
-    TransformKind,
+    analyze_query, analyze_query_with_complexity_guard, AnalyzeQueryOptions, ColumnReferenceFact,
+    ColumnUseContext, ColumnUseFact, ColumnUseReferenceFact, CteFact, ProjectionFact,
+    ProjectionNullability, QueryAnalysis, QueryShape, QuerySourceSpan, ReferenceConfidence,
+    RelationFact, SetOperationBranchFact, SetOperationBranchRole, SetOperationFact,
+    StarProjectionFact, TransformFunctionFact, TransformKind,
 };
 #[cfg(feature = "semantic")]
 pub use resolver::{is_column_ambiguous, resolve_column, Resolver, ResolverError, ResolverResult};
@@ -234,8 +234,9 @@ pub use trie::{new_trie, new_trie_from_keys, Trie, TrieResult};
 #[cfg(feature = "semantic")]
 pub use validation::{
     mapping_schema_from_validation_schema, mapping_schema_from_validation_schema_with_dialect,
-    validate_with_schema, SchemaColumn, SchemaColumnReference, SchemaForeignKey, SchemaTable,
-    SchemaTableReference, SchemaValidationOptions, ValidationSchema,
+    validate_with_schema, validate_with_schema_and_complexity_guard, SchemaColumn,
+    SchemaColumnReference, SchemaForeignKey, SchemaTable, SchemaTableReference,
+    SchemaValidationOptions, ValidationSchema,
 };
 
 #[cfg(feature = "generate")]
@@ -635,7 +636,22 @@ pub fn validate_with_dialect(
     dialect: &Dialect,
     options: &ValidationOptions,
 ) -> ValidationResult {
-    match dialect.parse(sql) {
+    validate_with_dialect_and_complexity_guard(sql, dialect, options, None)
+}
+
+/// Validate SQL using an already-resolved dialect and optional parser complexity overrides.
+#[cfg(feature = "semantic")]
+pub fn validate_with_dialect_and_complexity_guard(
+    sql: &str,
+    dialect: &Dialect,
+    options: &ValidationOptions,
+    complexity_guard: Option<ComplexityGuardOptions>,
+) -> ValidationResult {
+    let parsed = match complexity_guard {
+        Some(guard) => dialect.parse_with_complexity_guard(sql, guard),
+        None => dialect.parse(sql),
+    };
+    match parsed {
         Ok(expressions) => {
             // Reject bare expressions that aren't valid SQL statements.
             // The parser accepts any expression at the top level, but bare identifiers,

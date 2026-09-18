@@ -5,6 +5,13 @@ import pytest
 import polyglot_sql
 
 
+def _nested_coalesce_sql(depth: int) -> str:
+    expression = "customer_id"
+    for _ in range(depth):
+        expression = f"COALESCE({expression}, NULL)"
+    return f"SELECT {expression} FROM orders"
+
+
 @pytest.mark.parametrize(
     "dialect", ["snowflake", "duckdb", "postgres", "mysql", "tsql", "bigquery"]
 )
@@ -219,6 +226,32 @@ def test_parse_data_type_rejects_trailing_sql():
 def test_parse_invalid_sql_raises_parse_error():
     with pytest.raises(polyglot_sql.ParseError):
         polyglot_sql.parse("SELECT FROM", dialect="postgres")
+
+
+@pytest.mark.parametrize(
+    "parse_sql",
+    [polyglot_sql.parse, polyglot_sql.parse_one],
+    ids=["parse", "parse_one"],
+)
+def test_given_default_guard_when_parsing_deep_functions_then_rejects_input(parse_sql):
+    with pytest.raises(polyglot_sql.ParseError, match="E_GUARD_FUNCTION_NESTING_DEPTH_EXCEEDED"):
+        parse_sql(_nested_coalesce_sql(65), dialect="snowflake")
+
+
+@pytest.mark.parametrize(
+    "parse_sql",
+    [polyglot_sql.parse, polyglot_sql.parse_one],
+    ids=["parse", "parse_one"],
+)
+def test_given_raised_guard_when_parsing_deep_functions_then_returns_ast(parse_sql):
+    result = parse_sql(
+        _nested_coalesce_sql(65),
+        dialect="snowflake",
+        complexity_guard={"maxFunctionCallDepth": 128},
+    )
+
+    expression = result[0] if isinstance(result, list) else result
+    assert isinstance(expression, polyglot_sql.Select)
 
 
 def test_parse_calls_execute_concurrently_with_stable_results_and_errors():

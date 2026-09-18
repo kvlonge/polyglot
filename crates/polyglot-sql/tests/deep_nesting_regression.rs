@@ -335,6 +335,21 @@ fn transpile_options_can_raise_function_call_nesting_budget() {
 }
 
 #[test]
+fn dialect_parse_can_raise_function_call_nesting_budget() {
+    let sql = build_nested_unary_function_sql(80, "abs");
+    let postgres = Dialect::get(DialectType::PostgreSQL);
+    let complexity_guard = ComplexityGuardOptions {
+        max_function_call_depth: Some(128),
+        ..Default::default()
+    };
+
+    let parsed = postgres
+        .parse_with_complexity_guard(&sql, complexity_guard)
+        .expect("raised function nesting budget should allow this query");
+    assert_eq!(parsed.len(), 1);
+}
+
+#[test]
 fn parser_depth_options_and_independent_guards() {
     use polyglot_sql::parser::{Parser, ParserConfig};
     use polyglot_sql::tokens::Tokenizer;

@@ -15,7 +15,7 @@ use crate::schema::{MappingSchema, Schema};
 use crate::scope::{build_scope, Scope, SourceInfo, SourceKind};
 use crate::traversal::{contains_aggregate, ExpressionWalk};
 use crate::validation::{mapping_schema_from_validation_schema_with_dialect, ValidationSchema};
-use crate::{parse_one, Error, Result};
+use crate::{ComplexityGuardOptions, Error, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -238,7 +238,30 @@ pub enum ProjectionNullability {
 
 /// Analyze a single SELECT or set-operation query.
 pub fn analyze_query(sql: &str, options: AnalyzeQueryOptions) -> Result<QueryAnalysis> {
-    let mut expression = parse_one(sql, options.dialect)?;
+    analyze_query_with_complexity_guard(sql, options, None)
+}
+
+/// Analyze a query with optional parser complexity overrides.
+pub fn analyze_query_with_complexity_guard(
+    sql: &str,
+    options: AnalyzeQueryOptions,
+    complexity_guard: Option<ComplexityGuardOptions>,
+) -> Result<QueryAnalysis> {
+    let dialect = Dialect::get(options.dialect);
+    let mut expressions = match complexity_guard {
+        Some(guard) => dialect.parse_with_complexity_guard(sql, guard)?,
+        None => dialect.parse(sql)?,
+    };
+    if expressions.len() != 1 {
+        return Err(Error::parse(
+            format!("Expected 1 statement, found {}", expressions.len()),
+            0,
+            0,
+            0,
+            0,
+        ));
+    }
+    let mut expression = expressions.remove(0);
     expression = effective_query(expression);
     ensure_query(&expression)?;
     let original_expression = expression.clone();

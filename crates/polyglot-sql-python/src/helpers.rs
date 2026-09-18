@@ -1,10 +1,10 @@
 use crate::errors::{parse_statement_count_error, unknown_dialect_error, GenerateError};
 use crate::expr::PyExpression;
 use polyglot_sql::dialects::Dialect;
-use polyglot_sql::{ast_json, DataType, Expression, UnsupportedLevel};
+use polyglot_sql::{ast_json, ComplexityGuardOptions, DataType, Expression, UnsupportedLevel};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyDict, PyList};
+use pyo3::types::{PyAny, PyBool, PyDict, PyInt, PyList};
 use pythonize::{depythonize, pythonize};
 use serde::Serialize;
 use serde_json::Value;
@@ -18,14 +18,50 @@ where
     Ok(py.detach(f))
 }
 
-pub fn parse_detached(py: Python<'_>, dialect: &Dialect, sql: &str) -> PyResult<Vec<Expression>> {
+pub fn parse_detached(
+    py: Python<'_>,
+    dialect: &Dialect,
+    sql: &str,
+    complexity_guard: Option<ComplexityGuardOptions>,
+) -> PyResult<Vec<Expression>> {
     let dialect_type = dialect.dialect_type();
     let sql_owned = sql.to_owned();
     run_detached(py, move || {
         let d = Dialect::get(dialect_type);
-        d.parse(&sql_owned)
+        match complexity_guard {
+            Some(guard) => d.parse_with_complexity_guard(&sql_owned, guard),
+            None => d.parse(&sql_owned),
+        }
     })?
     .map_err(crate::errors::map_parse_error)
+}
+
+pub fn normalize_complexity_guard(
+    complexity_guard: Option<&Bound<'_, PyDict>>,
+) -> PyResult<Option<ComplexityGuardOptions>> {
+    complexity_guard
+        .map(|value| {
+            for (_, limit) in value.iter() {
+                if !limit.is_none()
+                    && (limit.is_instance_of::<PyBool>() || !limit.is_instance_of::<PyInt>())
+                {
+                    return Err(pyo3::exceptions::PyTypeError::new_err(
+                        "Complexity guard limits must be nonnegative integers or None",
+                    ));
+                }
+            }
+            let value: serde_json::Value = pythonize::depythonize(value).map_err(|error| {
+                pyo3::exceptions::PyValueError::new_err(format!(
+                    "Invalid complexity guard options: {error}"
+                ))
+            })?;
+            serde_json::from_value(value).map_err(|error| {
+                pyo3::exceptions::PyValueError::new_err(format!(
+                    "Invalid complexity guard options: {error}"
+                ))
+            })
+        })
+        .transpose()
 }
 
 pub fn parse_data_type_detached(

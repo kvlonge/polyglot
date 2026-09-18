@@ -1466,6 +1466,7 @@ def parse(
     dialect: str | None = None,
     *,
     error_level: str | None = None,
+    complexity_guard: ComplexityGuardOptions | None = None,
 ) -> list[Expression]:
     """Parse SQL into a list of ``Expression`` AST nodes.
 
@@ -1474,6 +1475,7 @@ def parse(
         read: Source dialect. Alias for *dialect*.
         dialect: Source dialect (e.g. ``"postgres"``). Defaults to ``"generic"``.
         error_level: ``"raise"`` (default), ``"warn"``, or ``"ignore"``.
+        complexity_guard: Optional parser complexity limit overrides.
 
     Returns:
         A list of typed ``Expression`` objects (e.g. ``Select``, ``Insert``).
@@ -1493,6 +1495,7 @@ def parse_one(
     *,
     into: type[DataType],
     error_level: str | None = None,
+    complexity_guard: ComplexityGuardOptions | None = None,
 ) -> DataType:
     ...
 
@@ -1504,6 +1507,7 @@ def parse_one(
     *,
     into: None = None,
     error_level: str | None = None,
+    complexity_guard: ComplexityGuardOptions | None = None,
 ) -> Expression:
     ...
 
@@ -1514,6 +1518,7 @@ def parse_one(
     *,
     into: type[DataType] | None = None,
     error_level: str | None = None,
+    complexity_guard: ComplexityGuardOptions | None = None,
 ) -> Expression | DataType:
     """Parse a single SQL statement into an ``Expression`` AST node.
 
@@ -1523,6 +1528,7 @@ def parse_one(
         dialect: Source dialect (e.g. ``"postgres"``). Defaults to ``"generic"``.
         into: Set to ``polyglot_sql.DataType`` to parse a standalone data type.
         error_level: ``"raise"`` (default), ``"warn"``, or ``"ignore"``.
+        complexity_guard: Optional parser complexity limit overrides.
 
     Returns:
         A typed ``Expression`` object (e.g. ``Select``) or ``DataType`` when
@@ -1688,6 +1694,7 @@ def validate(
     *,
     strict_syntax: bool = False,
     semantic: bool = False,
+    complexity_guard: ComplexityGuardOptions | None = None,
 ) -> ValidationResult:
     """Validate SQL syntax and optional semantic warnings.
 
@@ -1699,6 +1706,7 @@ def validate(
         dialect: Dialect for parsing. Defaults to ``"generic"``.
         strict_syntax: Reject permissive forms such as trailing commas.
         semantic: Report query-quality warnings W001 through W004.
+        complexity_guard: Optional parser complexity limit overrides.
 
     Raises:
         ValueError: If the dialect name is unknown.
@@ -1716,6 +1724,7 @@ def validate_with_schema(
     strict: bool | None = None,
     semantic: bool = False,
     strict_syntax: bool = False,
+    complexity_guard: ComplexityGuardOptions | None = None,
 ) -> ValidationResult:
     """Validate SQL against a shared ValidationSchema dictionary using Rust.
 
@@ -1727,7 +1736,8 @@ def validate_with_schema(
 
     semantic and strict_syntax behave as in validate. Syntax errors take
     precedence. Invalid SQL returns findings; invalid schemas or dialect names
-    raise ValueError. Options are snake_case keyword arguments, not a dictionary.
+    raise ValueError. ``complexity_guard`` optionally overrides parser limits.
+    Options are snake_case keyword arguments, not a dictionary.
     """
     ...
 
@@ -1833,6 +1843,8 @@ def analyze_query(
     sql: str,
     options: dict[str, TypingAny] | None = None,
     dialect: str = "generic",
+    *,
+    complexity_guard: ComplexityGuardOptions | None = None,
 ) -> dict[str, TypingAny]:
     """Return compact query analysis facts for a SELECT or set operation.
 
@@ -1840,6 +1852,7 @@ def analyze_query(
     ``schema`` in the same ValidationSchema shape accepted by schema-aware
     validation and lineage APIs. Schema columns use the ``type`` key for type
     strings; ``dataType`` and ``data_type`` are not accepted aliases.
+    ``complexity_guard`` optionally overrides parser limits.
 
     The returned dict includes ``relations``, transitive ``baseTables``,
     top-level ``cteFacts``, original ``starProjections``, and projection

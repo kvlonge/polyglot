@@ -1,31 +1,34 @@
 use crate::errors::parse_statement_count_error;
 use crate::expr_types::wrap_expression;
 use crate::helpers::{
-    normalize_error_level, parse_data_type_detached, parse_detached, resolve_read_or_dialect,
+    normalize_complexity_guard, normalize_error_level, parse_data_type_detached, parse_detached,
+    resolve_read_or_dialect,
 };
 use polyglot_sql::Expression;
 use pyo3::exceptions::PyNotImplementedError;
 use pyo3::prelude::*;
-use pyo3::types::PyAny;
+use pyo3::types::{PyAny, PyDict};
 
-#[pyfunction(signature = (sql, read = None, dialect = None, *, error_level = None))]
+#[pyfunction(signature = (sql, read = None, dialect = None, *, error_level = None, complexity_guard = None))]
 pub fn parse(
     py: Python<'_>,
     sql: &str,
     read: Option<&str>,
     dialect: Option<&str>,
     error_level: Option<&str>,
+    complexity_guard: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<Vec<Py<PyAny>>> {
     let dialect = resolve_read_or_dialect(read, dialect)?;
     let _ = normalize_error_level(error_level)?;
-    let expressions = parse_detached(py, &dialect, sql)?;
+    let complexity_guard = normalize_complexity_guard(complexity_guard)?;
+    let expressions = parse_detached(py, &dialect, sql, complexity_guard)?;
     expressions
         .into_iter()
         .map(|expr| wrap_expression(py, expr))
         .collect()
 }
 
-#[pyfunction(signature = (sql, read = None, dialect = None, *, into = None, error_level = None))]
+#[pyfunction(signature = (sql, read = None, dialect = None, *, into = None, error_level = None, complexity_guard = None))]
 pub fn parse_one(
     py: Python<'_>,
     sql: &str,
@@ -33,9 +36,11 @@ pub fn parse_one(
     dialect: Option<&str>,
     into: Option<&Bound<'_, PyAny>>,
     error_level: Option<&str>,
+    complexity_guard: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<Py<PyAny>> {
     let dialect = resolve_read_or_dialect(read, dialect)?;
     let _ = normalize_error_level(error_level)?;
+    let complexity_guard = normalize_complexity_guard(complexity_guard)?;
 
     if let Some(into) = into {
         let data_type_class = py.get_type::<crate::expr_types::DataType>();
@@ -49,7 +54,7 @@ pub fn parse_one(
         ));
     }
 
-    let mut expressions = parse_detached(py, &dialect, sql)?;
+    let mut expressions = parse_detached(py, &dialect, sql, complexity_guard)?;
 
     if expressions.len() != 1 {
         return Err(parse_statement_count_error(expressions.len()));

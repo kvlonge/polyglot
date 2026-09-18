@@ -2937,10 +2937,11 @@ impl Dialect {
     /// produces a separate element in the returned vector. Tokenization uses
     /// this dialect's configured tokenizer, and parsing uses the dialect-aware parser.
     pub fn parse(&self, sql: &str) -> Result<Vec<Expression>> {
-        self.parse_with_guard(sql, self.default_complexity_guard())
+        self.parse_with_complexity_guard(sql, self.default_complexity_guard())
     }
 
-    fn parse_with_guard(
+    /// Parses SQL with caller-supplied complexity guard limits.
+    pub fn parse_with_complexity_guard(
         &self,
         sql: &str,
         complexity_guard: ComplexityGuardOptions,
@@ -3412,7 +3413,7 @@ impl Dialect {
         {
             self.reject_pgvector_distance_operators_for_sqlite(sql)?;
         }
-        let expressions = self.parse_with_guard(sql, opts.complexity_guard)?;
+        let expressions = self.parse_with_complexity_guard(sql, opts.complexity_guard)?;
         let generic_identity =
             self.dialect_type == DialectType::Generic && target == DialectType::Generic;
 

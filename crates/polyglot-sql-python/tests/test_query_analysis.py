@@ -3,6 +3,13 @@ import pytest
 import polyglot_sql
 
 
+def _nested_coalesce_sql(depth):
+    expression = "amount"
+    for _ in range(depth):
+        expression = f"COALESCE({expression}, NULL)"
+    return f"SELECT {expression} FROM raw_orders"
+
+
 @pytest.mark.parametrize("with_schema", [False, True])
 def test_analyze_query_preserves_cast_type_through_cte_passthroughs(with_schema):
     sql = """
@@ -72,6 +79,24 @@ def test_analyze_query_returns_projection_facts():
     assert result["projections"][0]["name"] == "a"
     assert result["projections"][0]["transformKind"] == "direct"
     assert result["projections"][0]["upstream"][0]["column"] == "a"
+
+
+def test_given_raised_guard_when_analyzing_deep_functions_then_returns_facts():
+    sql = _nested_coalesce_sql(65)
+
+    with pytest.raises(
+        polyglot_sql.PolyglotError,
+        match="E_GUARD_FUNCTION_NESTING_DEPTH_EXCEEDED",
+    ):
+        polyglot_sql.analyze_query(sql, {"dialect": "snowflake"})
+
+    result = polyglot_sql.analyze_query(
+        sql,
+        {"dialect": "snowflake"},
+        complexity_guard={"maxFunctionCallDepth": 128},
+    )
+    assert result["shape"] == "select"
+    assert len(result["projections"]) == 1
 
 
 def test_analyze_query_accepts_schema_options():

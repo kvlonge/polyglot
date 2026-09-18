@@ -3,6 +3,13 @@ import pytest
 import polyglot_sql
 
 
+def _nested_coalesce_sql(depth):
+    expression = "order_id"
+    for _ in range(depth):
+        expression = f"COALESCE({expression}, NULL)"
+    return f"SELECT {expression} FROM orders"
+
+
 @pytest.fixture
 def schema():
     return {"tables": [
@@ -72,6 +79,24 @@ def test_validate_with_schema_options_and_strict_precedence(schema):
     semantic = polyglot_sql.validate_with_schema("SELECT * FROM orders LIMIT 10", schema, semantic=True)
     assert semantic.valid
     assert {e.code for e in semantic.errors} >= {"W001", "W004"}
+
+
+def test_given_raised_guard_when_validating_deep_functions_then_returns_valid(schema):
+    sql = _nested_coalesce_sql(65)
+    complexity_guard = {"maxFunctionCallDepth": 128}
+
+    assert not polyglot_sql.validate(sql, dialect="snowflake")
+    assert polyglot_sql.validate(
+        sql,
+        dialect="snowflake",
+        complexity_guard=complexity_guard,
+    )
+    assert polyglot_sql.validate_with_schema(
+        sql,
+        schema,
+        dialect="snowflake",
+        complexity_guard=complexity_guard,
+    )
 
 
 @pytest.mark.parametrize("sql,valid", [

@@ -3586,23 +3586,39 @@ pub fn validate_with_schema(
     schema: &ValidationSchema,
     options: &SchemaValidationOptions,
 ) -> ValidationResult {
+    validate_with_schema_and_complexity_guard(sql, dialect, schema, options, None)
+}
+
+/// Validate SQL against a schema with optional parser complexity overrides.
+pub fn validate_with_schema_and_complexity_guard(
+    sql: &str,
+    dialect: DialectType,
+    schema: &ValidationSchema,
+    options: &SchemaValidationOptions,
+    complexity_guard: Option<crate::ComplexityGuardOptions>,
+) -> ValidationResult {
     let strict = options.strict.unwrap_or(schema.strict.unwrap_or(true));
 
     // Syntax validation first.
-    let syntax_result = crate::validate_with_options(
+    let d = Dialect::get(dialect);
+    let syntax_result = crate::validate_with_dialect_and_complexity_guard(
         sql,
-        dialect,
+        &d,
         &crate::ValidationOptions {
             strict_syntax: options.strict_syntax,
             semantic: options.semantic,
         },
+        complexity_guard,
     );
     if !syntax_result.valid {
         return syntax_result;
     }
 
-    let d = Dialect::get(dialect);
-    let statements = match d.parse(sql) {
+    let statements = match complexity_guard {
+        Some(guard) => d.parse_with_complexity_guard(sql, guard),
+        None => d.parse(sql),
+    };
+    let statements = match statements {
         Ok(exprs) => exprs,
         Err(e) => {
             return ValidationResult::with_errors(vec![ValidationError::error(
